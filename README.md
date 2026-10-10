@@ -199,11 +199,11 @@ The API works without a key at **60 requests/minute per IP**, but without one th
 ## Self-Hosting
 
 ```bash
-# Docker (binds to 127.0.0.1:8095)
+# Docker (binds to 127.0.0.1:8101)
 cp .env.example .env      # set HYT_API_KEY
 docker network create mcp-network 2>/dev/null || true
 docker compose up -d --build
-curl http://127.0.0.1:8095/health
+curl http://127.0.0.1:8101/health
 
 # Or directly with Node.js 22+
 npm install
@@ -493,11 +493,11 @@ API ใช้งานได้โดยไม่ต้องมีคีย์�
 ## ติดตั้งใช้งานเอง
 
 ```bash
-# Docker (เปิดที่ 127.0.0.1:8095)
+# Docker (เปิดที่ 127.0.0.1:8101)
 cp .env.example .env      # ตั้งค่า HYT_API_KEY
 docker network create mcp-network 2>/dev/null || true
 docker compose up -d --build
-curl http://127.0.0.1:8095/health
+curl http://127.0.0.1:8101/health
 
 # หรือรันด้วย Node.js 22 ขึ้นไปโดยตรง
 npm install

@@ -106,7 +106,7 @@ jobs:
 
             echo "Waiting for the health check..."
             for i in $(seq 1 20); do
-              if curl -sf http://127.0.0.1:8095/health > /dev/null 2>&1; then
+              if curl -sf http://127.0.0.1:8101/health > /dev/null 2>&1; then
                 echo "Health check passed."
                 docker compose ps
                 docker image prune -f > /dev/null 2>&1 || true

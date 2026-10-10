@@ -10,7 +10,7 @@ Client (Claude, Cursor, ChatGPT, etc.)
 https://mcp.techmavie.digital/hatyaitransit/mcp
     ↓
 Nginx (SSL termination + reverse proxy, location /hatyaitransit/)
-    ↓ HTTP, 127.0.0.1:8095
+    ↓ HTTP, 127.0.0.1:8101
 Docker container mcp-hatyaitransit (port 8080 inside)
     ↓ HTTPS, X-API-Key: <service key>
 Hat Yai Transit API (https://hatyaitransit.techmavie.digital)
@@ -23,7 +23,7 @@ no sessions or data are kept between requests.
 
 - Docker and Docker Compose on the VPS
 - Nginx already serving `mcp.techmavie.digital` with a Let's Encrypt certificate (as for the other MCP servers)
-- Host port **8095** free (`ss -tlnp | grep 8095` should print nothing)
+- Host port **8101** free (`ss -tlnp | grep 8101` should print nothing)
 
 ## 1. Create the service key (once)
 
@@ -97,7 +97,7 @@ docker compose up -d --build
 
 ```bash
 # On the VPS
-curl http://127.0.0.1:8095/health
+curl http://127.0.0.1:8101/health
 
 # From anywhere
 curl https://mcp.techmavie.digital/hatyaitransit/health
@@ -124,7 +124,7 @@ git pull && docker compose up -d --build   # update by hand
 
 | Symptom | What to check |
 |---------|---------------|
-| Nginx 502 Bad Gateway | `docker compose ps`; `docker compose logs`; is port 8095 bound (`ss -tlnp \| grep 8095`)? |
+| Nginx 502 Bad Gateway | `docker compose ps`; `docker compose logs`; is port 8101 bound (`ss -tlnp \| grep 8101`)? |
 | `plan_journey` says HYT_API_KEY is not configured | `.env` exists and has `HYT_API_KEY=...`; recreate the container (`docker compose up -d`) |
 | Tools return `invalid-api-key` | The key in `.env` doesn't match `API_SERVICE_KEYS` on the API server |
 | Tools return `rate-limited` | Without a key all users share 60 requests/minute; set the service key |
