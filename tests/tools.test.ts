@@ -66,15 +66,18 @@ describe('stops and departures', () => {
     const routes = { 'GET /api/routes/SRT_741/departures': () => ({ body: SRT_ROUTE_DEPARTURES }) };
     await withClient(routes, {}, async ({ client }) => {
       const upcoming = (await callTool(client, 'get_route_departures', { routeId: 'SRT_741' })).data;
-      const dir0 = upcoming.directions.find((d: any) => d.direction === '0');
+      // Directions are named after where they go, with the numeric ID the other tools use
+      const dir0 = upcoming.directions.find((d: any) => d.directionId === 0);
+      assert.equal(dir0.direction, 'To Padang Besar (Malaysia)');
       assert.deepEqual(dir0.departures.map((d: any) => d.trainNo), ['741', '743']);
       assert.equal(dir0.boardingStop, 'Hat Yai Junction');
       assert.equal(upcoming.serviceDate, '2026-10-12');
-      assert.ok(upcoming.notes.some((n: string) => /No more 1 departures today/.test(n)));
+      assert.ok(upcoming.notes.some((n: string) => /No more departures today for To Hat Yai Junction/.test(n)));
+      assert.ok(!upcoming.notes.some((n: string) => /No more [01] /.test(n)), 'never a raw direction ID in the text');
       assert.ok(upcoming.notes.some((n: string) => /counter/.test(n)), 'SRT ticket note');
 
       const all = (await callTool(client, 'get_route_departures', { routeId: 'SRT_741', includePast: true, limit: 2 })).data;
-      assert.deepEqual(all.directions.find((d: any) => d.direction === '0').departures.map((d: any) => d.trainNo), ['999', '741']);
+      assert.deepEqual(all.directions.find((d: any) => d.directionId === 0).departures.map((d: any) => d.trainNo), ['999', '741']);
     });
   });
 
@@ -168,6 +171,41 @@ describe('plan_journey', () => {
 
       assert.ok(data.notes.some((n: string) => /estimates/.test(n)) && data.notes.some((n: string) => /counter/.test(n)));
       assert.ok(!JSON.stringify(data).includes('encoded-'), 'no polylines anywhere');
+    });
+  });
+
+  test('minibus legs show "~" times and the wait; later trains on the next day say so', async () => {
+    const stop = (stopId: string, en: string) => ({ stopId, name: en, name_en: en, name_th: en, name_ms: en, lat: 7, lng: 100.4, country: 'TH', verified: true });
+    const plan = {
+      ...PLAN_RESULT,
+      journeys: [{
+        id: 'x', walkOnly: false, warnings: [], usesAirportBoundMinibus: false,
+        summary: { departureTime: '09:01', arrivalTime: '10:42', totalDuration: 101, transfers: 1, totalWalkingDistance: 0, fareEstimate: { adult: 80 } },
+        legs: [
+          {
+            type: 'transit', mode: 'bus', route: { id: 'HY8299', shortName: '8299', name: { en: 'Airport Minibus' } }, from: stop('HY8299_01', 'Airport'), to: stop('HY8299_04A', 'Clock Tower'),
+            departureTime: '10:01', arrivalTime: '10:37', departureEpochMs: Date.parse('2026-10-12T10:01:00+07:00'), timeStatus: 'hours-only', headwayMin: 120,
+            waitMin: 60, waitNote: { en: 'Wait at the stop: there is no timetable…', th: 'รอที่ป้าย: ไม่มีตารางเวลา…', ms: 'Tunggu di hentian: tiada jadual…' }, nextDepartures: [], warnings: [],
+          },
+          {
+            type: 'transit', mode: 'rail', route: { id: 'SRT_741', shortName: '743' }, trainNo: '743', from: stop('SRT_HAT_YAI', 'Hat Yai Junction'), to: stop('SRT_PADANG_BESAR', 'Padang Besar'),
+            departureTime: '14:00', arrivalTime: '14:45', departureEpochMs: Date.parse('2026-10-12T14:00:00+07:00'), timeStatus: 'scheduled', waitMin: 0,
+            nextDepartures: [{ time: '08:55', epochMs: Date.parse('2026-10-13T08:55:00+07:00'), status: 'scheduled', trainNo: '741', nextDay: true }], warnings: [],
+          },
+        ],
+      }],
+    };
+    const routes = { 'POST /api/journey/plan': () => ({ body: plan }) };
+    await withClient(routes, { apiKey: TEST_KEY }, async ({ client }) => {
+      const { data } = await callTool(client, 'plan_journey', { originStopId: 'HY8299_01', destinationStopId: 'SRT_PADANG_BESAR' });
+      const [bus, train] = data.journeys[0].legs;
+      assert.equal(bus.departureTime, '~10:01', 'no timetable: approximate');
+      assert.equal(bus.arrivalTime, '~10:37');
+      assert.equal(bus.waitMin, 60, 'the wait is visible');
+      assert.match(bus.waitNote, /no timetable/);
+      assert.equal(train.departureTime, '14:00', 'timetabled times stay as they are');
+      assert.equal(train.waitMin, undefined, 'no wait, no field');
+      assert.deepEqual(train.laterDepartures, [{ time: '08:55', nextDay: true, trainNo: '741' }]);
     });
   });
 

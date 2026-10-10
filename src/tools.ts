@@ -288,6 +288,9 @@ function compactLeg(l: Json, lang: Lang, opts: { stops: boolean; polylines: bool
   const tracking = l.tracking as Json | null | undefined;
   const departEpoch = Number(l.departureEpochMs) || 0;
   const later = Array.isArray(l.nextDepartures) ? (l.nextDepartures as Json[]) : [];
+  // The airport minibus has no timetable: its times assume an average wait, so mark them "~"
+  const approx = l.timeStatus === 'hours-only' ? '~' : '';
+  const waitMin = Number(l.waitMin);
   return compact({
     mode: l.mode,
     route: compact({ id: route.id, shortName: route.shortName, name: pickLang(route.name, lang) ?? route.longName }),
@@ -296,8 +299,11 @@ function compactLeg(l: Json, lang: Lang, opts: { stops: boolean; polylines: bool
     boardingHint: pickLang(l.boardingHint, lang),
     from: legStop(l.from),
     to: legStop(l.to),
-    departureTime: l.departureTime,
-    arrivalTime: l.arrivalTime,
+    // Minutes spent waiting at the stop before this departure (after walking or the previous ride)
+    waitMin: Number.isFinite(waitMin) && waitMin > 0 ? waitMin : undefined,
+    waitNote: l.waitNote ? pickLang(l.waitNote, lang) : undefined,
+    departureTime: l.departureTime ? approx + String(l.departureTime) : undefined,
+    arrivalTime: l.arrivalTime ? approx + String(l.arrivalTime) : undefined,
     tomorrow: l.isTomorrowDeparture ? true : undefined,
     durationMin: l.duration,
     numStops: l.numStops,
@@ -311,11 +317,12 @@ function compactLeg(l: Json, lang: Lang, opts: { stops: boolean; polylines: bool
     warnings: Array.isArray(l.warnings)
       ? (l.warnings as Json[]).map((w) => compact({ text: pickLang(w.text, lang), severity: w.severity === 'high' ? 'high' : undefined }))
       : undefined,
-    // Later departures of the same service (only those after this leg's departure)
+    // Later departures of the same service (only those after this leg's departure; nextDay = the
+    // day after this leg's day)
     laterDepartures: later
       .filter((d) => !departEpoch || Number(d.epochMs) > departEpoch)
       .slice(0, 3)
-      .map((d) => compact({ time: d.time, trainNo: d.trainNo, status: d.status !== l.timeStatus ? d.status : undefined })),
+      .map((d) => compact({ time: d.time, nextDay: d.nextDay ? true : undefined, trainNo: d.trainNo, status: d.status !== l.timeStatus ? d.status : undefined })),
     stops: opts.stops && Array.isArray(l.stops) ? (l.stops as Json[]).map((s) => legStop(s)) : undefined,
     polyline: opts.polylines ? l.polyline : undefined,
   });
@@ -518,14 +525,20 @@ export function registerTools(server: McpServer, ctx: ToolContext): ToolInfo[] {
     async ({ routeId: id, direction: dir, stopId: sid, includePast, limit, language: lang }) => {
       const res = await api.get<Json>(apiPath`/api/routes/${id}/departures`, { direction: dir, stopId: sid });
       const origins = (res.origins ?? {}) as Record<string, unknown>;
+      const names = (res.directionNames ?? {}) as Record<string, unknown>;
+      const ids = (res.directionIds ?? {}) as Record<string, number>;
+      // Readable direction: its name ("Loop Left", "To Padang Besar (Malaysia)"), else the key
+      const nameOf = (key: string) => pickLang(names[key], lang) ?? key;
+      const idOf = (key: string) => (Number.isInteger(ids[key]) ? ids[key] : /^\d+$/.test(key) ? Number(key) : undefined);
       const groups = Object.entries((res.directions ?? {}) as Record<string, RouteDeparture[]>);
       const extra: string[] = [];
       const directions = groups.map(([key, list]) => {
         const remaining = list.filter((d) => d.minutesUntil >= 0);
         const shown = (includePast ? list : remaining).slice(0, limit);
-        if (!remaining.length && list.length) extra.push(`No more ${key} departures today; the first one of the day is at ${list[0]?.time}, so check again tomorrow.`);
+        if (!remaining.length && list.length) extra.push(`No more departures today for ${nameOf(key)}; the first one of the day is at ${list[0]?.time}, so check again tomorrow.`);
         return compact({
-          direction: key,
+          direction: nameOf(key),
+          directionId: idOf(key),
           boardingStop: pickLang(origins[key], lang),
           departuresToday: list.length,
           remainingToday: remaining.length,
@@ -535,7 +548,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): ToolInfo[] {
         });
       });
       const hoursOnly = Array.isArray(res.hoursOnly)
-        ? (res.hoursOnly as HoursOnly[]).map((h) => compact({ direction: h.key, operatingHours: h.operatingHours, approxEveryMin: h.approxHeadwayMin, status: 'hours-only' }))
+        ? (res.hoursOnly as HoursOnly[]).map((h) => compact({ direction: nameOf(String(h.key)), directionId: h.directionId ?? idOf(String(h.key)), operatingHours: h.operatingHours, approxEveryMin: h.approxHeadwayMin, status: 'hours-only' }))
         : [];
       return ok(compact({
         routeId: res.routeId ?? id,
@@ -633,7 +646,7 @@ export function registerTools(server: McpServer, ctx: ToolContext): ToolInfo[] {
         return { ...compactStop(s, lang), approxWalkMin: Number.isFinite(d) ? Math.max(1, Math.round((d * 1.3) / 72)) : undefined };
       });
       return ok(compact({
-        center,
+        center: { ...center, lat: Math.round(center.lat * 1e6) / 1e6, lng: Math.round(center.lng * 1e6) / 1e6 },
         radiusM: radius,
         count: stops.length,
         stops,

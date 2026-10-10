@@ -56,6 +56,8 @@ export const SRT_ROUTE_DEPARTURES = {
     '1': [{ time: '05:00', secOfDay: 18000, epochMs: 4, minutesUntil: -60, status: 'scheduled', headwayMin: null, tripId: '742', trainNumber: '742' }],
   },
   origins: { '0': { th: 'ชุมทางหาดใหญ่', en: 'Hat Yai Junction', ms: 'Hat Yai Junction' }, '1': { th: 'ปาดังเบซาร์', en: 'Padang Besar (Malaysia)', ms: 'Padang Besar' } },
+  directionNames: { '0': { th: 'ไปปาดังเบซาร์ (มาเลเซีย)', en: 'To Padang Besar (Malaysia)', ms: 'Ke Padang Besar' }, '1': { th: 'ไปชุมทางหาดใหญ่', en: 'To Hat Yai Junction', ms: 'Ke Hat Yai Junction' } },
+  directionIds: { '0': 0, '1': 1 },
   hoursOnly: [],
   runsToday: true,
 };
