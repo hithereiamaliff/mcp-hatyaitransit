@@ -1,0 +1,10 @@
+{
+  "//": "Type-checks the tests too (npm run typecheck). Never used for the build.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,121 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Hat Yai Transit MCP — test, then deploy to the VPS.
+#
+#   test    type-check, unit tests and build (on every push and pull request)
+#   deploy  only on a push to main (or a manual run), and only if the tests pass:
+#           SSH into the VPS, update the code in /opt/mcp-servers/hatyaitransit,
+#           write .env from the HYT_API_KEY secret, rebuild and restart the container,
+#           then wait for the health check.
+#
+# Secrets (GitHub → Settings → Secrets and variables → Actions), same as the other MCP servers:
+#   VPS_HOST, VPS_USERNAME, VPS_SSH_KEY, VPS_PORT
+# plus:
+#   HYT_API_KEY   the MCP service key for the Hat Yai Transit API (see README)
+# ─────────────────────────────────────────────────────────────────────────────
+name: Test & Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # allow a manual run from the Actions tab
+
+concurrency:
+  group: deploy-vps-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Type-check, test & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  deploy:
+    name: Deploy to VPS
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          # Passed to the server as an environment variable (envs below), so the key never
+          # appears in the script text. GitHub also masks it in the logs.
+          HYT_API_KEY: ${{ secrets.HYT_API_KEY }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: HYT_API_KEY
+          script: |
+            set -e
+
+            DEPLOY_DIR="/opt/mcp-servers/hatyaitransit"
+
+            # Clone on the first run, otherwise sync to origin/main
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              git clone https://github.com/hithereiamaliff/mcp-hatyaitransit.git "$DEPLOY_DIR"
+            else
+              cd "$DEPLOY_DIR"
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+            cd "$DEPLOY_DIR"
+
+            # Write .env from the secret (readable by this user only). If the secret is empty,
+            # keep an existing .env rather than wiping a key that was set by hand.
+            if [ -n "$HYT_API_KEY" ]; then
+              umask 077
+              printf 'HYT_API_KEY=%s\n' "$HYT_API_KEY" > .env
+              echo ".env written from the HYT_API_KEY secret"
+            elif [ -f .env ]; then
+              echo "HYT_API_KEY secret is empty; keeping the existing .env"
+            else
+              echo "WARNING: no HYT_API_KEY; plan_journey and search_places will be disabled"
+              : > .env
+            fi
+
+            # Shared Docker network used by the MCP servers
+            docker network inspect mcp-network >/dev/null 2>&1 || docker network create mcp-network
+
+            # Build first: the running container keeps serving until the new image is ready,
+            # and a failed build leaves the current version running.
+            docker compose build
+
+            # Recreate the container. If an old container with the same name exists outside
+            # this compose project, remove it and try once more.
+            if ! docker compose up -d --remove-orphans; then
+              docker rm -f mcp-hatyaitransit 2>/dev/null || true
+              docker compose up -d --remove-orphans
+            fi
+
+            echo "Waiting for the health check..."
+            for i in $(seq 1 20); do
+              if curl -sf http://127.0.0.1:8095/health > /dev/null 2>&1; then
+                echo "Health check passed."
+                docker compose ps
+                docker image prune -f > /dev/null 2>&1 || true
+                echo "Deployment completed at $(date)"
+                exit 0
+              fi
+              sleep 3
+            done
+
+            echo "Health check failed after 60 seconds"
+            docker compose logs --tail=80 mcp-hatyaitransit
+            exit 1

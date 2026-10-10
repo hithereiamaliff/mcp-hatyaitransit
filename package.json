@@ -1,0 +1,58 @@
+{
+  "name": "mcp-hatyaitransit",
+  "version": "1.0.0",
+  "description": "Hat Yai Transit MCP Server - unofficial transit info for Hat Yai, Thailand (EV City Loop, airport minibus, SRT trains to Padang Besar) with a journey planner",
+  "type": "module",
+  "main": "./dist/http-server.js",
+  "bin": {
+    "mcp-hatyaitransit": "./dist/stdio.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/http-server.js",
+    "start:stdio": "node dist/stdio.js",
+    "dev": "tsx watch src/http-server.ts",
+    "dev:stdio": "tsx src/stdio.ts",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/stdio.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "hat-yai",
+    "songkhla",
+    "thailand",
+    "transit",
+    "gtfs",
+    "ev-bus",
+    "srt",
+    "padang-besar"
+  ],
+  "author": "Aliff (hithereiamaliff)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hithereiamaliff/mcp-hatyaitransit.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.3.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,42 @@
+# Hat Yai Transit MCP Server - Docker Compose (VPS)
+# Public URL: https://mcp.techmavie.digital/hatyaitransit/mcp
+#
+# - Bound to 127.0.0.1 only: reachable through nginx, never directly from the internet
+#   (Docker-published ports otherwise bypass the ufw firewall).
+# - Host port 8095 (not used by the other MCP servers; nginx proxies /hatyaitransit/ to it).
+# - Joins the shared external "mcp-network" like the other MCP servers (the deploy workflow
+#   creates it if it is missing).
+# - HYT_API_KEY comes from the .env file next to this file (written by the deploy workflow
+#   from the GitHub secret). Docker Compose reads that file automatically.
+
+services:
+  mcp-hatyaitransit:
+    build: .
+    container_name: mcp-hatyaitransit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8095:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+      - HYT_API_URL=${HYT_API_URL:-https://hatyaitransit.techmavie.digital}
+      - HYT_API_KEY=${HYT_API_KEY:-}
+      - HYT_API_TIMEOUT_MS=${HYT_API_TIMEOUT_MS:-15000}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - mcp-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  mcp-network:
+    external: true
